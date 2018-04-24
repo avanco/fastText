@@ -429,14 +429,12 @@ void FastText::printSentenceVectors() {
 void FastText::precomputeWordVectors(Matrix& wordVectors) {
   Vector vec(args_->dim);
   wordVectors.zero();
-  std::cout << "Pre-computing word vectors...";
   for (int32_t i = 0; i < dict_->nwords(); i++) {
     std::string word = dict_->getWord(i);
     getVector(vec, word);
     real norm = vec.norm();
     wordVectors.addRow(vec, i, 1.0 / norm);
   }
-  std::cout << " done." << std::endl;
 }
 
 void FastText::findNN(const Matrix& wordVectors, const Vector& queryVec,
@@ -463,13 +461,43 @@ void FastText::findNN(const Matrix& wordVectors, const Vector& queryVec,
   }
 }
 
-void FastText::nn(int32_t k) {
-  std::string queryWord;
+std::vector<std::string> FastText::findNNWords(const Matrix& wordVectors, const Vector& queryVec,
+                      int32_t k, const std::set<std::string>& banSet) {
+  std::vector<std::string> words;
+  real queryNorm = queryVec.norm();
+  if (std::abs(queryNorm) < 1e-8) {
+    queryNorm = 1;
+  }
+  std::priority_queue<std::pair<real, std::string>> heap;
+  Vector vec(args_->dim);
+  for (int32_t i = 0; i < dict_->nwords(); i++) {
+    std::string word = dict_->getWord(i);
+    real dp = wordVectors.dotRow(queryVec, i);
+    heap.push(std::make_pair(dp / queryNorm, word));
+  }
+  int32_t i = 0;
+  while (i < k && heap.size() > 0) {
+    auto it = banSet.find(heap.top().second);
+    if (it == banSet.end()) {
+	  words.push_back(heap.top().second);
+      i++;
+    }
+    heap.pop();
+  }
+  return words;
+}
+
+std::vector<std::string> FastText::nn(int32_t k, std::string queryWord) {
   Vector queryVec(args_->dim);
   Matrix wordVectors(dict_->nwords(), args_->dim);
   precomputeWordVectors(wordVectors);
   std::set<std::string> banSet;
-  std::cout << "Query word? ";
+  banSet.clear();
+  banSet.insert(queryWord);
+  getVector(queryVec, queryWord);
+  std::vector<std::string> nnWords = findNNWords(wordVectors, queryVec, k, banSet);
+  return nnWords;
+  /*
   while (std::cin >> queryWord) {
     banSet.clear();
     banSet.insert(queryWord);
@@ -477,6 +505,7 @@ void FastText::nn(int32_t k) {
     findNN(wordVectors, queryVec, k, banSet);
     std::cout << "Query word? ";
   }
+  */
 }
 
 void FastText::analogies(int32_t k) {

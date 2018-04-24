@@ -27,6 +27,7 @@
 #include "real.h"
 #include "utils.h"
 #include "vector.h"
+#include <queue>
 
 namespace fasttext {
 
@@ -82,7 +83,8 @@ class FastText {
     void precomputeWordVectors(Matrix&);
     void findNN(const Matrix&, const Vector&, int32_t,
                 const std::set<std::string>&);
-    void nn(int32_t);
+	std::vector<std::string> findNNWords(const Matrix&, const Vector&, int32_t, const std::set<std::string>&);
+	std::vector<std::string> nn(int32_t, std::string);
     void analogies(int32_t);
     void trainThread(int32_t);
     void train(std::shared_ptr<Args>);

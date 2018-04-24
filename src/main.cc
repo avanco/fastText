@@ -200,17 +200,10 @@ void printNgrams(int argc, char** argv) {
 
 void nn(int argc, char** argv) {
   int32_t k;
-  if (argc == 3) {
-    k = 10;
-  } else if (argc == 4) {
-    k = atoi(argv[3]);
-  } else {
-    printNNUsage();
-    exit(EXIT_FAILURE);
-  }
   FastText fasttext;
   fasttext.loadModel(std::string(argv[2]));
-  fasttext.nn(k);
+  k = atoi(argv[3]);
+  fasttext.nn(k, std::string(argv[4]));
   exit(0);
 }
 
