@@ -12,36 +12,31 @@
 #include <iostream>
 #include <assert.h>
 #include <algorithm>
-#include <stdexcept>
 
 namespace fasttext {
 
-constexpr int64_t SIGMOID_TABLE_SIZE = 512;
-constexpr int64_t MAX_SIGMOID = 8;
-constexpr int64_t LOG_TABLE_SIZE = 512;
-
-Model::Model(
-    std::shared_ptr<Matrix> wi,
-    std::shared_ptr<Matrix> wo,
-    std::shared_ptr<Args> args,
-    int32_t seed)
-    : hidden_(args->dim),
-      output_(wo->size(0)),
-      grad_(args->dim),
-      rng(seed),
-      quant_(false) {
+Model::Model(std::shared_ptr<Matrix> wi,
+             std::shared_ptr<Matrix> wo,
+             std::shared_ptr<Args> args,
+             int32_t seed)
+  : hidden_(args->dim), output_(wo->m_),
+  grad_(args->dim), rng(seed), quant_(false)
+{
   wi_ = wi;
   wo_ = wo;
   args_ = args;
-  osz_ = wo->size(0);
+  osz_ = wo->m_;
   hsz_ = args->dim;
   negpos = 0;
   loss_ = 0.0;
   nexamples_ = 1;
-  t_sigmoid_.reserve(SIGMOID_TABLE_SIZE + 1);
-  t_log_.reserve(LOG_TABLE_SIZE + 1);
   initSigmoid();
   initLog();
+}
+
+Model::~Model() {
+  delete[] t_sigmoid;
+  delete[] t_log;
 }
 
 void Model::setQuantizePointer(std::shared_ptr<QMatrix> qwi,
@@ -142,47 +137,33 @@ bool Model::comparePairs(const std::pair<real, int32_t> &l,
   return l.first > r.first;
 }
 
-void Model::predict(const std::vector<int32_t>& input, int32_t k, real threshold,
+void Model::predict(const std::vector<int32_t>& input, int32_t k,
                     std::vector<std::pair<real, int32_t>>& heap,
                     Vector& hidden, Vector& output) const {
-  if (k <= 0) {
-    throw std::invalid_argument("k needs to be 1 or higher!");
-  }
-  if (args_->model != model_name::sup) {
-    throw std::invalid_argument("Model needs to be supervised for prediction!");
-  }
+  assert(k > 0);
   heap.reserve(k + 1);
   computeHidden(input, hidden);
   if (args_->loss == loss_name::hs) {
-    dfs(k, threshold, 2 * osz_ - 2, 0.0, heap, hidden);
+    dfs(k, 2 * osz_ - 2, 0.0, heap, hidden);
   } else {
-    findKBest(k, threshold, heap, hidden, output);
+    findKBest(k, heap, hidden, output);
   }
   std::sort_heap(heap.begin(), heap.end(), comparePairs);
 }
 
-void Model::predict(
-  const std::vector<int32_t>& input,
-  int32_t k,
-  real threshold,
-  std::vector<std::pair<real, int32_t>>& heap
-) {
-  predict(input, k, threshold, heap, hidden_, output_);
+void Model::predict(const std::vector<int32_t>& input, int32_t k,
+                    std::vector<std::pair<real, int32_t>>& heap) {
+  predict(input, k, heap, hidden_, output_);
 }
 
-void Model::findKBest(
-  int32_t k,
-  real threshold,
-  std::vector<std::pair<real, int32_t>>& heap,
-  Vector& hidden, Vector& output
-) const {
+void Model::findKBest(int32_t k, std::vector<std::pair<real, int32_t>>& heap,
+                      Vector& hidden, Vector& output) const {
   computeOutputSoftmax(hidden, output);
   for (int32_t i = 0; i < osz_; i++) {
-    if (output[i] < threshold) continue;
-    if (heap.size() == k && std_log(output[i]) < heap.front().first) {
+    if (heap.size() == k && log(output[i]) < heap.front().first) {
       continue;
     }
-    heap.push_back(std::make_pair(std_log(output[i]), i));
+    heap.push_back(std::make_pair(log(output[i]), i));
     std::push_heap(heap.begin(), heap.end(), comparePairs);
     if (heap.size() > k) {
       std::pop_heap(heap.begin(), heap.end(), comparePairs);
@@ -191,10 +172,9 @@ void Model::findKBest(
   }
 }
 
-void Model::dfs(int32_t k, real threshold, int32_t node, real score,
+void Model::dfs(int32_t k, int32_t node, real score,
                 std::vector<std::pair<real, int32_t>>& heap,
                 Vector& hidden) const {
-  if (score < std_log(threshold)) return;
   if (heap.size() == k && score < heap.front().first) {
     return;
   }
@@ -211,14 +191,13 @@ void Model::dfs(int32_t k, real threshold, int32_t node, real score,
 
   real f;
   if (quant_ && args_->qout) {
-    f= qwo_->dotRow(hidden, node - osz_);
+    f= sigmoid(qwo_->dotRow(hidden, node - osz_));
   } else {
-    f= wo_->dotRow(hidden, node - osz_);
+    f= sigmoid(wo_->dotRow(hidden, node - osz_));
   }
-  f = 1. / (1 + std::exp(-f));
 
-  dfs(k, threshold, tree[node].left, score + std_log(1.0 - f), heap, hidden);
-  dfs(k, threshold, tree[node].right, score + std_log(f), heap, hidden);
+  dfs(k, tree[node].left, score + log(1.0 - f), heap, hidden);
+  dfs(k, tree[node].right, score + log(f), heap, hidden);
 }
 
 void Model::update(const std::vector<int32_t>& input, int32_t target, real lr) {
@@ -261,17 +240,17 @@ void Model::initTableNegatives(const std::vector<int64_t>& counts) {
   for (size_t i = 0; i < counts.size(); i++) {
     real c = pow(counts[i], 0.5);
     for (size_t j = 0; j < c * NEGATIVE_TABLE_SIZE / z; j++) {
-      negatives_.push_back(i);
+      negatives.push_back(i);
     }
   }
-  std::shuffle(negatives_.begin(), negatives_.end(), rng);
+  std::shuffle(negatives.begin(), negatives.end(), rng);
 }
 
 int32_t Model::getNegative(int32_t target) {
   int32_t negative;
   do {
-    negative = negatives_[negpos];
-    negpos = (negpos + 1) % negatives_.size();
+    negative = negatives[negpos];
+    negpos = (negpos + 1) % negatives.size();
   } while (target == negative);
   return negative;
 }
@@ -325,16 +304,18 @@ real Model::getLoss() const {
 }
 
 void Model::initSigmoid() {
+  t_sigmoid = new real[SIGMOID_TABLE_SIZE + 1];
   for (int i = 0; i < SIGMOID_TABLE_SIZE + 1; i++) {
     real x = real(i * 2 * MAX_SIGMOID) / SIGMOID_TABLE_SIZE - MAX_SIGMOID;
-    t_sigmoid_.push_back(1.0 / (1.0 + std::exp(-x)));
+    t_sigmoid[i] = 1.0 / (1.0 + std::exp(-x));
   }
 }
 
 void Model::initLog() {
+  t_log = new real[LOG_TABLE_SIZE + 1];
   for (int i = 0; i < LOG_TABLE_SIZE + 1; i++) {
     real x = (real(i) + 1e-5) / LOG_TABLE_SIZE;
-    t_log_.push_back(std::log(x));
+    t_log[i] = std::log(x);
   }
 }
 
@@ -342,12 +323,8 @@ real Model::log(real x) const {
   if (x > 1.0) {
     return 0.0;
   }
-  int64_t i = int64_t(x * LOG_TABLE_SIZE);
-  return t_log_[i];
-}
-
-real Model::std_log(real x) const {
-  return std::log(x+1e-5);
+  int i = int(x * LOG_TABLE_SIZE);
+  return t_log[i];
 }
 
 real Model::sigmoid(real x) const {
@@ -356,8 +333,8 @@ real Model::sigmoid(real x) const {
   } else if (x > MAX_SIGMOID) {
     return 1.0;
   } else {
-    int64_t i = int64_t((x + MAX_SIGMOID) * SIGMOID_TABLE_SIZE / MAX_SIGMOID / 2);
-    return t_sigmoid_[i];
+    int i = int((x + MAX_SIGMOID) * SIGMOID_TABLE_SIZE / MAX_SIGMOID / 2);
+    return t_sigmoid[i];
   }
 }
 

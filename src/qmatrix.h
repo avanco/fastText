@@ -7,7 +7,8 @@
  * of patent rights can be found in the PATENTS file in the same directory.
  */
 
-#pragma once
+#ifndef FASTTEXT_QMATRIX_H
+#define FASTTEXT_QMATRIX_H
 
 #include <cstdint>
 #include <istream>
@@ -26,12 +27,12 @@
 namespace fasttext {
 
 class QMatrix {
-  protected:
+  private:
     std::unique_ptr<ProductQuantizer> pq_;
     std::unique_ptr<ProductQuantizer> npq_;
 
-    std::vector<uint8_t> codes_;
-    std::vector<uint8_t> norm_codes_;
+    uint8_t* codes_;
+    uint8_t* norm_codes_;
 
     bool qnorm_;
 
@@ -44,6 +45,7 @@ class QMatrix {
 
     QMatrix();
     QMatrix(const Matrix&, int32_t, bool);
+    ~QMatrix();
 
     int64_t getM() const;
     int64_t getN() const;
@@ -59,3 +61,5 @@ class QMatrix {
 };
 
 }
+
+#endif

@@ -7,7 +7,8 @@
  * of patent rights can be found in the PATENTS file in the same directory.
  */
 
-#pragma once
+#ifndef FASTTEXT_DICTIONARY_H
+#define FASTTEXT_DICTIONARY_H
 
 #include <vector>
 #include <string>
@@ -33,17 +34,13 @@ struct entry {
 };
 
 class Dictionary {
-  protected:
+  private:
     static const int32_t MAX_VOCAB_SIZE = 30000000;
     static const int32_t MAX_LINE_SIZE = 1024;
 
     int32_t find(const std::string&) const;
-    int32_t find(const std::string&, uint32_t h) const;
     void initTableDiscard();
     void initNgrams();
-    void reset(std::istream&) const;
-    void pushHash(std::vector<int32_t>&, int32_t) const;
-    void addSubwords(std::vector<int32_t>&, const std::string&, int32_t) const;
 
     std::shared_ptr<Args> args_;
     std::vector<int32_t> word2int_;
@@ -55,13 +52,12 @@ class Dictionary {
     int32_t nlabels_;
     int64_t ntokens_;
 
-    int64_t pruneidx_size_;
+    int64_t pruneidx_size_ = -1;
     std::unordered_map<int32_t, int32_t> pruneidx_;
-    void addWordNgrams(
+    void addNgrams(
         std::vector<int32_t>& line,
         const std::vector<int32_t>& hashes,
         int32_t n) const;
-
 
    public:
     static const std::string EOS;
@@ -69,27 +65,21 @@ class Dictionary {
     static const std::string EOW;
 
     explicit Dictionary(std::shared_ptr<Args>);
-    explicit Dictionary(std::shared_ptr<Args>, std::istream&);
     int32_t nwords() const;
     int32_t nlabels() const;
     int64_t ntokens() const;
     int32_t getId(const std::string&) const;
-    int32_t getId(const std::string&, uint32_t h) const;
     entry_type getType(int32_t) const;
     entry_type getType(const std::string&) const;
     bool discard(int32_t, real) const;
     std::string getWord(int32_t) const;
-    const std::vector<int32_t>& getSubwords(int32_t) const;
-    const std::vector<int32_t> getSubwords(const std::string&) const;
-    void getSubwords(
-        const std::string&,
-        std::vector<int32_t>&,
-        std::vector<std::string>&) const;
-    void computeSubwords(const std::string&, std::vector<int32_t>&) const;
-    void computeSubwords(
-        const std::string&,
-        std::vector<int32_t>&,
-        std::vector<std::string>&) const;
+    const std::vector<int32_t>& getNgrams(int32_t) const;
+    const std::vector<int32_t> getNgrams(const std::string&) const;
+    void getNgrams(const std::string&, std::vector<int32_t>&,
+                   std::vector<std::string>&) const;
+    void computeNgrams(const std::string&, std::vector<int32_t>&) const;
+    void computeNgrams(const std::string&, std::vector<int32_t>&,
+                       std::vector<std::string>&) const;
     uint32_t hash(const std::string& str) const;
     void add(const std::string&);
     bool readWord(std::istream&, std::string&) const;
@@ -98,15 +88,15 @@ class Dictionary {
     void save(std::ostream&) const;
     void load(std::istream&);
     std::vector<int64_t> getCounts(entry_type) const;
-    int32_t getLine(std::istream&, std::vector<int32_t>&, std::vector<int32_t>&)
-        const;
+    int32_t getLine(std::istream&, std::vector<int32_t>&, std::vector<int32_t>&,
+                    std::vector<int32_t>&, std::minstd_rand&) const;
     int32_t getLine(std::istream&, std::vector<int32_t>&,
-                    std::minstd_rand&) const;
+                    std::vector<int32_t>&, std::minstd_rand&) const;
     void threshold(int64_t, int64_t);
     void prune(std::vector<int32_t>&);
-    bool isPruned() { return pruneidx_size_ >= 0; }
-    void dump(std::ostream&) const;
-    void init();
+    void convertNgrams(std::vector<int32_t>&);
 };
 
 }
+
+#endif
