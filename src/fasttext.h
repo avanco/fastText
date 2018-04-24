@@ -7,23 +7,23 @@
  * of patent rights can be found in the PATENTS file in the same directory.
  */
 
-#ifndef FASTTEXT_FASTTEXT_H
-#define FASTTEXT_FASTTEXT_H
-
-#define FASTTEXT_VERSION 11 /* Version 1a */
-#define FASTTEXT_FILEFORMAT_MAGIC_INT32 793712314
+#pragma once
 
 #include <time.h>
 
 #include <atomic>
 #include <memory>
 #include <set>
+#include <chrono>
+#include <iostream>
+#include <queue>
+#include <tuple>
 
 #include "args.h"
 #include "dictionary.h"
 #include "matrix.h"
-#include "qmatrix.h"
 #include "model.h"
+#include "qmatrix.h"
 #include "real.h"
 #include "utils.h"
 #include "vector.h"
@@ -32,6 +32,7 @@
 namespace fasttext {
 
 class FastText {
+
   private:
     std::shared_ptr<Args> args_;
     std::shared_ptr<Dictionary> dict_;
@@ -91,6 +92,4 @@ class FastText {
 
     void loadVectors(std::string);
 };
-
 }
-#endif
